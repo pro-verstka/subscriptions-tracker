@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  App Sandbox is intentionally disabled: the in-app updater downloads a new
+	  release and replaces this .app bundle in place, which the sandbox forbids.
+	  Without the sandbox the app already has network and filesystem access, so
+	  no further entitlements are required.
+	-->
+</dict>
+</plist>
