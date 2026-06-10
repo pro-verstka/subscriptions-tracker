@@ -9,6 +9,8 @@ struct SubscriptionDTO: Codable {
     var period: String
     var renewalDate: Date
     var notifyDaysBefore: Int
+    /// Optional — для совместимости со старыми файлами экспорта без этого поля.
+    var isPaused: Bool?
 }
 
 /// Результат импорта.
@@ -40,7 +42,8 @@ enum SubscriptionStore {
                 currencyCode: $0.currencyCode,
                 period: $0.periodRaw,
                 renewalDate: $0.renewalDate,
-                notifyDaysBefore: $0.notifyDaysBefore
+                notifyDaysBefore: $0.notifyDaysBefore,
+                isPaused: $0.isPaused
             )
         }
         let encoder = JSONEncoder()
@@ -82,7 +85,8 @@ enum SubscriptionStore {
                 currencyCode: dto.currencyCode,
                 period: BillingPeriod(rawValue: dto.period) ?? .monthly,
                 renewalDate: dto.renewalDate,
-                notifyDaysBefore: dto.notifyDaysBefore
+                notifyDaysBefore: dto.notifyDaysBefore,
+                isPaused: dto.isPaused ?? false
             ))
             added += 1
         }

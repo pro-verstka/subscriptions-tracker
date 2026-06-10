@@ -13,7 +13,6 @@ struct MenuContentView: View {
 
     @State private var editingSubscription: Subscription?
     @State private var isAddingSubscription = false
-    @State private var listContentHeight: CGFloat = 0
 
     /// Подписки, сгруппированные по валюте, с месячным итогом группы.
     private struct CurrencyGroup: Identifiable {
@@ -22,23 +21,40 @@ struct MenuContentView: View {
         var id: String { total.currencyCode }
     }
 
+    /// Активные подписки — участвуют в итогах и уведомлениях.
+    private var activeSubscriptions: [Subscription] {
+        subscriptions.filter { !$0.isPaused }
+    }
+
+    /// Подписки, отображаемые в списке (с учётом «Show all subscriptions»).
+    private var displayedSubscriptions: [Subscription] {
+        settings.showAllSubscriptions ? subscriptions : activeSubscriptions
+    }
+
+    /// Группы строятся по валютам отображаемых подписок, а суммы — только по активным:
+    /// валютная группа, где всё на паузе, остаётся видимой с нулевым итогом.
     private var groups: [CurrencyGroup] {
         let sort = settings.sortOrder
-        return TotalsCalculator.monthlyTotals(for: subscriptions).map { total in
-            let inGroup = subscriptions.filter { $0.currencyCode == total.currencyCode }
+        let activeTotals = Dictionary(
+            uniqueKeysWithValues: TotalsCalculator.monthlyTotals(for: activeSubscriptions)
+                .map { ($0.currencyCode, $0) }
+        )
+        return Set(displayedSubscriptions.map(\.currencyCode)).sorted().map { code in
+            let total = activeTotals[code] ?? CurrencyTotal(currencyCode: code, monthlyAmount: 0)
+            let inGroup = displayedSubscriptions.filter { $0.currencyCode == code }
             return CurrencyGroup(total: total, subscriptions: sort.apply(to: inGroup))
         }
     }
 
     private var totals: [CurrencyTotal] {
-        TotalsCalculator.monthlyTotals(for: subscriptions)
+        TotalsCalculator.monthlyTotals(for: activeSubscriptions)
     }
 
     /// Отпечаток полей, влияющих на расписание уведомлений. Меняется при добавлении,
     /// удалении или правке релевантных полей — это триггер для пересчёта уведомлений.
     private var schedulingFingerprint: String {
         subscriptions
-            .map { "\($0.persistentModelID.hashValue):\($0.renewalDate.timeIntervalSince1970):\($0.notifyDaysBefore):\($0.periodRaw)" }
+            .map { "\($0.persistentModelID.hashValue):\($0.renewalDate.timeIntervalSince1970):\($0.notifyDaysBefore):\($0.periodRaw):\($0.isPaused)" }
             .joined(separator: "|")
     }
 
@@ -72,7 +88,7 @@ struct MenuContentView: View {
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !subscriptions.isEmpty {
+            if !totals.isEmpty {
                 header
                 Divider()
             }
@@ -199,44 +215,44 @@ struct MenuContentView: View {
 
     @ViewBuilder
     private var content: some View {
-        if subscriptions.isEmpty {
-            VStack(spacing: 6) {
-                Image(systemName: "tray")
-                    .font(.largeTitle)
-                    .foregroundStyle(.secondary)
-                Text("No subscriptions yet")
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
-        } else {
-            // ScrollView не имеет собственной высоты, а окно MenuBarExtra подгоняется
-            // под контент — без явной высоты список схлопнулся бы в 0. Высота растёт
-            // с числом строк до `maxVisibleRows`, дальше включается прокрутка.
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    if settings.groupByCurrency {
-                        ForEach(groups) { group in
-                            groupHeader(group)
-                            Divider()
-                            ForEach(group.subscriptions) { subscription in
+        // У ScrollView нет собственной высоты, а окно MenuBarExtra подгоняется под
+        // контент, поэтому область списка имеет фиксированную высоту: строк меньше —
+        // снизу пустое место, больше — прокрутка. Динамическое измерение убрано:
+        // окно схлопывалось при первом запуске и не ужималось при удалении строк.
+        Group {
+            if displayedSubscriptions.isEmpty {
+                VStack(spacing: 6) {
+                    // Различаем «подписок нет вовсе» и «все на паузе и скрыты».
+                    Image(systemName: subscriptions.isEmpty ? "tray" : "pause.circle")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text(subscriptions.isEmpty ? "No subscriptions yet" : "All subscriptions are paused")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        if settings.groupByCurrency {
+                            ForEach(groups) { group in
+                                groupHeader(group)
+                                Divider()
+                                ForEach(group.subscriptions) { subscription in
+                                    row(subscription)
+                                    Divider()
+                                }
+                            }
+                        } else {
+                            ForEach(settings.sortOrder.apply(to: displayedSubscriptions)) { subscription in
                                 row(subscription)
                                 Divider()
                             }
                         }
-                    } else {
-                        ForEach(settings.sortOrder.apply(to: subscriptions)) { subscription in
-                            row(subscription)
-                            Divider()
-                        }
                     }
                 }
-                // измеряем реальную высоту контента, чтобы область списка точно
-                // подгонялась под строки (без зазоров) и упиралась в потолок
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listContentHeight = $0 }
             }
-            .frame(height: min(listContentHeight, maxListHeight))
         }
+        .frame(height: listHeight)
     }
 
     private func row(_ subscription: Subscription) -> some View {
@@ -245,12 +261,14 @@ struct MenuContentView: View {
             .onTapGesture { editingSubscription = subscription }
             .contextMenu {
                 Button("Edit") { editingSubscription = subscription }
+                Button(subscription.isPaused ? "Resume" : "Pause") { togglePause(subscription) }
                 Button("Delete", role: .destructive) { delete(subscription) }
             }
     }
 
-    /// Потолок высоты списка: вмещает несколько строк с заголовками групп, дальше — прокрутка.
-    private let maxListHeight: CGFloat = 420
+    /// Фиксированная высота области списка: если строк больше — прокрутка,
+    /// если меньше — пустое место снизу.
+    private let listHeight: CGFloat = 420
 
     // MARK: - Footer (кнопки)
 
@@ -282,6 +300,12 @@ struct MenuContentView: View {
 
     private func delete(_ subscription: Subscription) {
         modelContext.delete(subscription)
+        try? modelContext.save()
+    }
+
+    /// Ставит подписку на паузу или возобновляет её.
+    private func togglePause(_ subscription: Subscription) {
+        subscription.isPaused.toggle()
         try? modelContext.save()
     }
 

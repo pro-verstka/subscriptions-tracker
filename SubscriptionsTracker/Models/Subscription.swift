@@ -13,6 +13,10 @@ final class Subscription {
     var periodRaw: String
     var renewalDate: Date
     var notifyDaysBefore: Int
+    /// Подписка «на паузе»: скрыта из списка (если не включён показ всех),
+    /// не входит в итоги и не получает уведомлений. Default в объявлении —
+    /// для лёгкой миграции существующих хранилищ SwiftData.
+    var isPaused: Bool = false
 
     var period: BillingPeriod {
         get { BillingPeriod(rawValue: periodRaw) ?? .monthly }
@@ -25,7 +29,8 @@ final class Subscription {
         currencyCode: String,
         period: BillingPeriod,
         renewalDate: Date,
-        notifyDaysBefore: Int = 3
+        notifyDaysBefore: Int = 3,
+        isPaused: Bool = false
     ) {
         self.name = name
         self.amount = amount
@@ -33,6 +38,7 @@ final class Subscription {
         self.periodRaw = period.rawValue
         self.renewalDate = renewalDate
         self.notifyDaysBefore = notifyDaysBefore
+        self.isPaused = isPaused
     }
 
     /// Ближайшая будущая дата продления, вычисленная от сохранённой даты.

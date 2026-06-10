@@ -52,6 +52,8 @@ struct SettingsView: View {
                 }
 
                 Toggle("Group by currency", isOn: $settings.groupByCurrency)
+
+                Toggle("Show all subscriptions", isOn: $settings.showAllSubscriptions)
             }
 
             Section("Data") {

@@ -13,10 +13,12 @@ struct SubscriptionRow: View {
     }
 
     private var accent: Color {
-        RenewalProgress.color(forFraction: fraction)
+        subscription.isPaused ? .gray : RenewalProgress.color(forFraction: fraction)
     }
 
     private var renewalCaption: String {
+        // Для подписки на паузе дата продления не имеет смысла.
+        if subscription.isPaused { return "Paused" }
         let days = RenewalProgress.daysRemaining(for: subscription)
         let date = subscription.nextRenewal.formatted(date: .abbreviated, time: .omitted)
         switch days {
@@ -51,11 +53,23 @@ struct SubscriptionRow: View {
                     .foregroundStyle(.secondary)
             }
 
-            ProgressView(value: fraction)
+            // У паузнутой подписки прогресс пустой, но бар остаётся —
+            // чтобы высота строк была одинаковой.
+            ProgressView(value: subscription.isPaused ? 0 : fraction)
                 .tint(accent)
         }
         .padding(.horizontal, 12)
         .padding(.top, 7)
         .padding(.bottom, 4)
+        .opacity(subscription.isPaused ? 0.55 : 1)
+        .overlay(alignment: .leading) {
+            // Левая полоска-маркер подписки на паузе.
+            if subscription.isPaused {
+                Capsule()
+                    .fill(.tertiary)
+                    .frame(width: 3)
+                    .padding(.vertical, 6)
+            }
+        }
     }
 }

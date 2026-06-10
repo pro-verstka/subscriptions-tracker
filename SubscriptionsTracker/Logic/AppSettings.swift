@@ -17,10 +17,15 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(groupByCurrency, forKey: Keys.groupByCurrency) }
     }
 
+    @Published var showAllSubscriptions: Bool {
+        didSet { defaults.set(showAllSubscriptions, forKey: Keys.showAllSubscriptions) }
+    }
+
     private enum Keys {
         static let notificationsEnabled = "notificationsEnabled"
         static let sortOrder = "sortOrder"
         static let groupByCurrency = "groupByCurrency"
+        static let showAllSubscriptions = "showAllSubscriptions"
     }
 
     private let defaults = UserDefaults.standard
@@ -30,6 +35,7 @@ final class AppSettings: ObservableObject {
         let rawSort = defaults.string(forKey: Keys.sortOrder) ?? SubscriptionSort.renewalDate.rawValue
         sortOrder = SubscriptionSort(rawValue: rawSort) ?? .renewalDate
         groupByCurrency = Self.bool(Keys.groupByCurrency, default: true, defaults)
+        showAllSubscriptions = Self.bool(Keys.showAllSubscriptions, default: false, defaults)
     }
 
     private static func bool(_ key: String, default def: Bool, _ defaults: UserDefaults) -> Bool {

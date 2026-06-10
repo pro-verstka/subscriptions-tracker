@@ -31,8 +31,8 @@ enum NotificationScheduler {
 
     /// Сбрасывает все запланированные уведомления и пересоздаёт по одному на подписку,
     /// на дату `nextRenewal − notifyDaysBefore` (только если она в будущем).
-    /// Если уведомления выключены в настройках — просто очищает запланированные.
-    /// Вызывать при любом изменении данных.
+    /// Подписки на паузе пропускаются. Если уведомления выключены в настройках —
+    /// просто очищает запланированные. Вызывать при любом изменении данных.
     static func reschedule(for subscriptions: [Subscription]) async {
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
@@ -40,7 +40,7 @@ enum NotificationScheduler {
         guard AppSettings.shared.notificationsEnabled else { return }
 
         let calendar = Calendar.current
-        let snapshots = subscriptions.map {
+        let snapshots = subscriptions.filter { !$0.isPaused }.map {
             Snapshot(
                 id: "\($0.persistentModelID.hashValue)",
                 name: $0.name,
