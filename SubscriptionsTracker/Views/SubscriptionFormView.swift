@@ -2,10 +2,11 @@ import SwiftUI
 import SwiftData
 
 /// Форма добавления/редактирования подписки. `subscription == nil` — режим добавления.
-/// Показывается встроенно внутри окна menubar (не как `.sheet`), поэтому закрытие
-/// выполняется через колбэк `onClose`, а не `@Environment(\.dismiss)`.
+/// Показывается в отдельном окне (`Window` сцены), поэтому закрытие выполняется через
+/// `@Environment(\.dismiss)`. Цель формы окну передаёт `SubscriptionFormPresenter`.
 struct SubscriptionFormView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     /// Пока поддерживаем только эти валюты (код + символ).
     static let supportedCurrencies: [(code: String, symbol: String)] = [
@@ -15,7 +16,6 @@ struct SubscriptionFormView: View {
     ]
 
     let subscription: Subscription?
-    let onClose: () -> Void
 
     @State private var name: String
     @State private var amount: Decimal?
@@ -32,9 +32,8 @@ struct SubscriptionFormView: View {
             && !currencyCode.isEmpty
     }
 
-    init(subscription: Subscription?, onClose: @escaping () -> Void) {
+    init(subscription: Subscription?) {
         self.subscription = subscription
-        self.onClose = onClose
         _name = State(initialValue: subscription?.name ?? "")
         _amount = State(initialValue: subscription?.amount)
         let localeCurrency = Locale.current.currency?.identifier
@@ -49,19 +48,10 @@ struct SubscriptionFormView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(isEditing ? "Edit subscription" : "New subscription")
-                    .font(.headline)
-                Spacer()
-            }
-            .padding(12)
-
-            Divider()
-
             Form {
                 TextField("Name", text: $name)
 
-                TextField("Amount", value: $amount, format: .number)
+                DecimalField("Amount", value: $amount)
 
                 Picker("Currency", selection: $currencyCode) {
                     ForEach(Self.supportedCurrencies, id: \.code) { currency in
@@ -84,7 +74,7 @@ struct SubscriptionFormView: View {
             Divider()
 
             HStack {
-                Button("Cancel", role: .cancel) { onClose() }
+                Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
 
                 Spacer()
@@ -96,6 +86,7 @@ struct SubscriptionFormView: View {
             .padding(12)
         }
         .frame(width: 360, height: 440)
+        .navigationTitle(isEditing ? "Edit Subscription" : "New Subscription")
     }
 
     private func save() {
@@ -122,6 +113,17 @@ struct SubscriptionFormView: View {
         }
 
         try? modelContext.save()
-        onClose()
+        dismiss()
+    }
+}
+
+/// Содержимое окна формы: берёт цель у `SubscriptionFormPresenter` и пересоздаёт
+/// форму по `token`, чтобы каждое открытие начиналось с актуальными значениями.
+struct SubscriptionFormScene: View {
+    @ObservedObject private var presenter = SubscriptionFormPresenter.shared
+
+    var body: some View {
+        SubscriptionFormView(subscription: presenter.subscription)
+            .id(presenter.token)
     }
 }

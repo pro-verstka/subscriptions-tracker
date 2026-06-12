@@ -11,9 +11,6 @@ struct MenuContentView: View {
     @ObservedObject private var updater = UpdateService.shared
     @Query private var subscriptions: [Subscription]
 
-    @State private var editingSubscription: Subscription?
-    @State private var isAddingSubscription = false
-
     /// Подписки, сгруппированные по валюте, с месячным итогом группы.
     private struct CurrencyGroup: Identifiable {
         let total: CurrencyTotal
@@ -58,32 +55,21 @@ struct MenuContentView: View {
             .joined(separator: "|")
     }
 
-    private var isShowingForm: Bool { isAddingSubscription || editingSubscription != nil }
-
     var body: some View {
-        // Форма встраивается в то же окно, а не открывается как `.sheet`: окно menubar
-        // (стиль `.window`) закрывается при потере фокуса, поэтому отдельное окно-sheet
-        // схлопывалось бы при клике по нему. Инлайн-переключение этого избегает.
-        VStack(spacing: 0) {
-            if isShowingForm {
-                SubscriptionFormView(subscription: editingSubscription) {
-                    isAddingSubscription = false
-                    editingSubscription = nil
+        // Форма открывается отдельным окном (сцена `subscriptionForm`), а не инлайн:
+        // окно menubar (стиль `.window`) закрывается при потере фокуса, что и происходит
+        // при активации окна формы — это ожидаемо, как и при открытии Settings.
+        list
+            .task {
+                if AppSettings.shared.notificationsEnabled {
+                    await NotificationScheduler.requestAuthorization()
                 }
-            } else {
-                list
+                await NotificationScheduler.reschedule(for: subscriptions)
             }
-        }
-        .task {
-            if AppSettings.shared.notificationsEnabled {
-                await NotificationScheduler.requestAuthorization()
+            .onChange(of: schedulingFingerprint) {
+                let current = subscriptions
+                Task { await NotificationScheduler.reschedule(for: current) }
             }
-            await NotificationScheduler.reschedule(for: subscriptions)
-        }
-        .onChange(of: schedulingFingerprint) {
-            let current = subscriptions
-            Task { await NotificationScheduler.reschedule(for: current) }
-        }
     }
 
     private var list: some View {
@@ -258,9 +244,9 @@ struct MenuContentView: View {
     private func row(_ subscription: Subscription) -> some View {
         SubscriptionRow(subscription: subscription)
             .contentShape(Rectangle())
-            .onTapGesture { editingSubscription = subscription }
+            .onTapGesture { presentForm(subscription) }
             .contextMenu {
-                Button("Edit") { editingSubscription = subscription }
+                Button("Edit") { presentForm(subscription) }
                 Button(subscription.isPaused ? "Resume" : "Pause") { togglePause(subscription) }
                 Button("Delete", role: .destructive) { delete(subscription) }
             }
@@ -275,7 +261,7 @@ struct MenuContentView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             Button {
-                isAddingSubscription = true
+                presentForm(nil)
             } label: {
                 Label("Add", systemImage: "plus")
             }
@@ -312,5 +298,12 @@ struct MenuContentView: View {
     private func openSettings() {
         openWindow(id: "settings")
         NSApp.activate() // вынести окно настроек на передний план у agent-приложения
+    }
+
+    /// Открывает окно формы: `nil` — добавление, иначе редактирование подписки.
+    private func presentForm(_ subscription: Subscription?) {
+        SubscriptionFormPresenter.shared.present(subscription)
+        openWindow(id: "subscriptionForm")
+        NSApp.activate() // вынести окно формы на передний план у agent-приложения
     }
 }

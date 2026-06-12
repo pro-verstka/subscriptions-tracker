@@ -20,6 +20,13 @@ struct SubscriptionsTrackerApp: App {
         .menuBarExtraStyle(.window)
         .modelContainer(AppModelContainer.shared)
 
+        Window("Subscription", id: "subscriptionForm") {
+            SubscriptionFormScene()
+        }
+        .modelContainer(AppModelContainer.shared) // форме нужен modelContext для insert/save
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+
         Window("Settings", id: "settings") {
             SettingsView()
         }
