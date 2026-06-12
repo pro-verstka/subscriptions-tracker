@@ -1,15 +1,21 @@
 import Foundation
 
-/// Итог «в месяц» по одной валюте.
+/// Итог «в месяц» по одной валюте. Хранится в месячном выражении; пересчёт
+/// на другой период делается на лету в `amount(per:)`/`formatted(per:)`.
 struct CurrencyTotal: Identifiable {
     let currencyCode: String
     let monthlyAmount: Decimal
     var id: String { currencyCode }
 
-    /// Строка вида «25,00 $/mo», отформатированная по правилам валюты.
-    var formatted: String {
-        let value = monthlyAmount.formatted(.currency(code: currencyCode))
-        return "\(value)/mo"
+    /// Сумма, пересчитанная с «в месяц» на указанный период.
+    func amount(per period: BillingPeriod) -> Decimal {
+        monthlyAmount / period.monthlyFactor
+    }
+
+    /// Строка вида «25,00 $/mo» для указанного периода, по правилам валюты.
+    func formatted(per period: BillingPeriod) -> String {
+        let value = amount(per: period).formatted(.currency(code: currencyCode))
+        return "\(value)\(period.totalSuffix)"
     }
 }
 

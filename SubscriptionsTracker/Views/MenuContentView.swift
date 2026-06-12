@@ -152,9 +152,12 @@ struct MenuContentView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Monthly total")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text("\(settings.totalsPeriod.title) total")
+                Image(systemName: "arrow.left.arrow.right")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             HStack(spacing: 0) {
                 ForEach(Array(totals.enumerated()), id: \.element.id) { index, total in
@@ -165,7 +168,7 @@ struct MenuContentView: View {
                         Text(total.currencyCode)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Text(total.formatted)
+                        Text(total.formatted(per: settings.totalsPeriod))
                             .font(.subheadline.weight(.semibold))
                             .monospacedDigit()
                             .lineLimit(1)
@@ -178,6 +181,9 @@ struct MenuContentView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
+        .contentShape(Rectangle())
+        .onTapGesture { cycleTotalsPeriod() }
+        .help("Click to switch period (week / month / year)")
     }
 
     // MARK: - Content (список, сгруппированный по валюте)
@@ -187,7 +193,7 @@ struct MenuContentView: View {
             Text(group.total.currencyCode)
                 .font(.caption.weight(.semibold))
             Spacer()
-            Text(group.total.formatted)
+            Text(group.total.formatted(per: settings.totalsPeriod))
                 .font(.caption.weight(.semibold))
                 .monospacedDigit()
         }
@@ -293,6 +299,13 @@ struct MenuContentView: View {
     private func togglePause(_ subscription: Subscription) {
         subscription.isPaused.toggle()
         try? modelContext.save()
+    }
+
+    /// Переключает период отображения итогов по кругу: month → year → week → …
+    private func cycleTotalsPeriod() {
+        let all = BillingPeriod.allCases
+        let index = all.firstIndex(of: settings.totalsPeriod) ?? 0
+        settings.totalsPeriod = all[(index + 1) % all.count]
     }
 
     private func openSettings() {

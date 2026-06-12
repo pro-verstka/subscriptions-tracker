@@ -17,6 +17,15 @@ enum BillingPeriod: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// Короткий суффикс для итоговых сумм: «/wk», «/mo», «/yr».
+    var totalSuffix: String {
+        switch self {
+        case .weekly:  return "/wk"
+        case .monthly: return "/mo"
+        case .yearly:  return "/yr"
+        }
+    }
+
     /// Множитель, приводящий одну оплату этого периода к сумме «в месяц».
     /// weekly: 52 недели / 12 месяцев; monthly: 1; yearly: 1 / 12.
     var monthlyFactor: Decimal {
