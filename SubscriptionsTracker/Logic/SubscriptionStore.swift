@@ -19,6 +19,12 @@ struct ImportResult {
     let skipped: Int
 }
 
+/// Корневой документ экспорта: подписки + настройки приложения.
+struct ExportDocument: Codable {
+    var subscriptions: [SubscriptionDTO]
+    var settings: SettingsDTO
+}
+
 /// Экспорт/импорт подписок в JSON через общий контекст SwiftData.
 @MainActor
 enum SubscriptionStore {
@@ -46,19 +52,21 @@ enum SubscriptionStore {
                 isPaused: $0.isPaused
             )
         }
+        let document = ExportDocument(subscriptions: dtos, settings: AppSettings.shared.exportSnapshot)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(dtos)
+        return try encoder.encode(document)
     }
 
-    /// Декодирует JSON и добавляет подписки в хранилище, пропуская те, что уже есть
-    /// (идентичные по всем полям). Возвращает количество добавленных и пропущенных.
+    /// Декодирует JSON, добавляет подписки в хранилище (пропуская идентичные по всем
+    /// полям) и применяет настройки из файла. Возвращает число добавленных и пропущенных.
     @discardableResult
     static func importJSON(_ data: Data) throws -> ImportResult {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let dtos = try decoder.decode([SubscriptionDTO].self, from: data)
+        let document = try decoder.decode(ExportDocument.self, from: data)
+        let dtos = document.subscriptions
 
         let context = AppModelContainer.shared.mainContext
         let existing = try context.fetch(FetchDescriptor<Subscription>())
@@ -91,6 +99,7 @@ enum SubscriptionStore {
             added += 1
         }
         try context.save()
+        AppSettings.shared.apply(document.settings)
         return ImportResult(added: added, skipped: skipped)
     }
 }

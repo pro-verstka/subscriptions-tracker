@@ -133,11 +133,14 @@ struct SettingsView: View {
             let data = try Data(contentsOf: url)
             let result = try SubscriptionStore.importJSON(data)
             if result.skipped > 0 {
-                show("Imported \(result.added), skipped \(result.skipped) duplicate(s).", error: false)
+                show("Imported \(result.added) subscription(s) and settings, skipped \(result.skipped) duplicate(s).", error: false)
             } else {
-                show("Imported \(result.added) subscription(s).", error: false)
+                show("Imported \(result.added) subscription(s) and settings.", error: false)
             }
-            Task { await NotificationScheduler.rescheduleFromStore() }
+            Task {
+                if settings.notificationsEnabled { await NotificationScheduler.requestAuthorization() }
+                await NotificationScheduler.rescheduleFromStore()
+            }
         } catch {
             show(error.localizedDescription, error: true)
         }
