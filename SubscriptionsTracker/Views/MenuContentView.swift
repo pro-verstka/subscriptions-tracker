@@ -224,20 +224,24 @@ struct MenuContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
-                        if settings.groupByCurrency {
-                            ForEach(groups) { group in
-                                groupHeader(group)
-                                Divider()
-                                ForEach(group.subscriptions) { subscription in
-                                    row(subscription)
+                    // `TimelineView` каждую минуту прогоняет актуальный `now` в строки,
+                    // чтобы прогресс и дата продления не застывали (см. SubscriptionRow).
+                    TimelineView(.everyMinute) { context in
+                        LazyVStack(spacing: 0) {
+                            if settings.groupByCurrency {
+                                ForEach(groups) { group in
+                                    groupHeader(group)
+                                    Divider()
+                                    ForEach(group.subscriptions) { subscription in
+                                        row(subscription, now: context.date)
+                                        Divider()
+                                    }
+                                }
+                            } else {
+                                ForEach(settings.sortOrder.apply(to: displayedSubscriptions)) { subscription in
+                                    row(subscription, now: context.date)
                                     Divider()
                                 }
-                            }
-                        } else {
-                            ForEach(settings.sortOrder.apply(to: displayedSubscriptions)) { subscription in
-                                row(subscription)
-                                Divider()
                             }
                         }
                     }
@@ -247,8 +251,8 @@ struct MenuContentView: View {
         .frame(height: listHeight)
     }
 
-    private func row(_ subscription: Subscription) -> some View {
-        SubscriptionRow(subscription: subscription)
+    private func row(_ subscription: Subscription, now: Date) -> some View {
+        SubscriptionRow(subscription: subscription, now: now)
             .contentShape(Rectangle())
             .onTapGesture { presentForm(subscription) }
             .contextMenu {

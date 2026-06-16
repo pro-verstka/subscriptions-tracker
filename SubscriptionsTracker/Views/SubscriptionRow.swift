@@ -3,24 +3,32 @@ import SwiftUI
 /// Строка списка: название и сумма, цветной прогресс-бар цикла и «сколько осталось».
 struct SubscriptionRow: View {
     let subscription: Subscription
+    /// Текущий момент, прокинутый из `TimelineView` — чтобы прогресс, «осталось дней» и
+    /// дата продления пересчитывались по ходу времени, а не застывали с момента отрисовки.
+    let now: Date
 
     private var amountText: String {
         subscription.amount.formatted(.currency(code: subscription.currencyCode))
     }
 
     private var fraction: Double {
-        RenewalProgress.fraction(for: subscription)
+        RenewalProgress.fraction(for: subscription, now: now)
     }
 
     private var accent: Color {
         subscription.isPaused ? .gray : RenewalProgress.color(forFraction: fraction)
     }
 
+    /// Ближайшая будущая дата продления на момент `now`.
+    private var nextRenewal: Date {
+        RenewalDate.nextOccurrence(of: subscription.renewalDate, period: subscription.period, now: now)
+    }
+
     private var renewalCaption: String {
         // Для подписки на паузе дата продления не имеет смысла.
         if subscription.isPaused { return "Paused" }
-        let days = RenewalProgress.daysRemaining(for: subscription)
-        let date = subscription.nextRenewal.formatted(date: .abbreviated, time: .omitted)
+        let days = RenewalProgress.daysRemaining(for: subscription, now: now)
+        let date = nextRenewal.formatted(date: .abbreviated, time: .omitted)
         switch days {
         case 0:  return "Renews today · \(date)"
         case 1:  return "Renews tomorrow · \(date)"

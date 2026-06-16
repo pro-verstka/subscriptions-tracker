@@ -9,7 +9,9 @@ enum RenewalProgress {
         now: Date = .now,
         calendar: Calendar = .current
     ) -> Double {
-        let next = subscription.nextRenewal
+        let next = RenewalDate.nextOccurrence(
+            of: subscription.renewalDate, period: subscription.period, now: now, calendar: calendar
+        )
         let step = subscription.period.calendarStep
         guard
             let previous = calendar.date(byAdding: step.component, value: -step.value, to: next)
@@ -34,10 +36,13 @@ enum RenewalProgress {
         now: Date = .now,
         calendar: Calendar = .current
     ) -> Int {
+        let next = RenewalDate.nextOccurrence(
+            of: subscription.renewalDate, period: subscription.period, now: now, calendar: calendar
+        )
         let components = calendar.dateComponents(
             [.day],
             from: calendar.startOfDay(for: now),
-            to: calendar.startOfDay(for: subscription.nextRenewal)
+            to: calendar.startOfDay(for: next)
         )
         return max(components.day ?? 0, 0)
     }
