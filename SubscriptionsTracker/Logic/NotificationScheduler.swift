@@ -32,7 +32,8 @@ enum NotificationScheduler {
     /// Сбрасывает все запланированные уведомления и пересоздаёт по одному на подписку,
     /// на дату `nextRenewal − notifyDaysBefore`. Если эта дата уже прошла, но само
     /// продление ещё впереди (подписку добавили внутри окна напоминания) — уведомление
-    /// сдвигается на ближайшую минуту, а не теряется. Подписки на паузе пропускаются.
+    /// сдвигается на ближайшую минуту, но показывается лишь раз: повтор гасится по
+    /// наличию уже доставленного уведомления с тем же id. Подписки на паузе пропускаются.
     /// Если уведомления выключены в настройках — очищает и запланированные, и уже
     /// показанные. Вызывать при любом изменении данных.
     static func reschedule(for subscriptions: [Subscription]) async {
@@ -62,9 +63,10 @@ enum NotificationScheduler {
         // подписок остаются — следующая доставка заменит их по стабильному id, а не размножит.
         let validIDs = Set(snapshots.map(\.id))
         let delivered = await center.deliveredNotifications()
-        let stale = delivered.map(\.request.identifier).filter { !validIDs.contains($0) }
+        let deliveredIDs = Set(delivered.map(\.request.identifier))
+        let stale = deliveredIDs.filter { !validIDs.contains($0) }
         if !stale.isEmpty {
-            center.removeDeliveredNotifications(withIdentifiers: stale)
+            center.removeDeliveredNotifications(withIdentifiers: Array(stale))
         }
 
         for snapshot in snapshots {
@@ -74,15 +76,23 @@ enum NotificationScheduler {
                 to: snapshot.nextRenewal
             ) else { continue }
 
-            // Плановая дата напоминания ещё впереди — используем её. Если она уже
-            // прошла, но само продление ещё не наступило (подписку добавили внутри
-            // окна напоминания), не теряем уведомление, а сдвигаем его на ближайшую
-            // минуту. Если же продление уже позади — пропускаем (в норме недостижимо:
-            // nextRenewal всегда в будущем, см. RenewalDate.nextOccurrence).
+            // Плановая дата напоминания ещё впереди — используем её как есть.
+            //
+            // Если она уже прошла, но само продление ещё не наступило (подписку добавили
+            // внутри окна напоминания или продление совсем близко) — не теряем уведомление,
+            // а показываем его в ближайшую минуту. Но РОВНО ОДИН раз: reschedule работает
+            // по принципу reset-and-rebuild и вызывается часто (открытие меню, правка
+            // данных), поэтому без защиты он планировал бы новое «через минуту» уведомление
+            // при каждом проходе, плодя дубли. Признак «по этой подписке уже уведомили» —
+            // наличие доставленного уведомления с тем же id; тогда больше не планируем.
+            //
+            // Если продление уже позади — пропускаем (в норме недостижимо: nextRenewal
+            // всегда в будущем, см. RenewalDate.nextOccurrence).
             let fireDate: Date
             if plannedFireDate > .now {
                 fireDate = plannedFireDate
             } else if snapshot.nextRenewal > .now {
+                if deliveredIDs.contains(snapshot.id) { continue }
                 fireDate = calendar.date(byAdding: .minute, value: 1, to: .now)
                     ?? .now.addingTimeInterval(60)
             } else {
