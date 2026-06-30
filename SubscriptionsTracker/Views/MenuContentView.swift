@@ -51,7 +51,7 @@ struct MenuContentView: View {
     /// удалении или правке релевантных полей — это триггер для пересчёта уведомлений.
     private var schedulingFingerprint: String {
         subscriptions
-            .map { "\($0.persistentModelID.hashValue):\($0.renewalDate.timeIntervalSince1970):\($0.notifyDaysBefore):\($0.periodRaw):\($0.isPaused)" }
+            .map { "\($0.notificationID ?? "nil"):\($0.renewalDate.timeIntervalSince1970):\($0.notifyDaysBefore):\($0.periodRaw):\($0.isPaused)" }
             .joined(separator: "|")
     }
 
@@ -297,6 +297,9 @@ struct MenuContentView: View {
     private func delete(_ subscription: Subscription) {
         modelContext.delete(subscription)
         try? modelContext.save()
+        // Явный пересчёт: чистка доставленных уведомлений удалённой подписки не должна
+        // зависеть от тайминга наблюдения `schedulingFingerprint` этой вью.
+        Task { await NotificationScheduler.rescheduleFromStore() }
     }
 
     /// Ставит подписку на паузу или возобновляет её.

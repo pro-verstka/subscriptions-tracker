@@ -5,17 +5,6 @@ import UserNotifications
 /// Локальные уведомления о приближающемся продлении подписки.
 @MainActor
 enum NotificationScheduler {
-    /// Снимок полей подписки — чтобы не передавать `@Model` (он не `Sendable`)
-    /// через границы async-вызовов.
-    private struct Snapshot {
-        let id: String
-        let name: String
-        let amount: Decimal
-        let currencyCode: String
-        let nextRenewal: Date
-        let notifyDaysBefore: Int
-    }
-
     /// Запрашивает разрешение на показ уведомлений (один раз при старте).
     static func requestAuthorization() async {
         let center = UNUserNotificationCenter.current()
@@ -32,8 +21,8 @@ enum NotificationScheduler {
     /// Сбрасывает все запланированные уведомления и пересоздаёт по одному на подписку,
     /// на дату `nextRenewal − notifyDaysBefore`. Если эта дата уже прошла, но само
     /// продление ещё впереди (подписку добавили внутри окна напоминания) — уведомление
-    /// сдвигается на ближайшую минуту, но показывается лишь раз: повтор гасится по
-    /// наличию уже доставленного уведомления с тем же id. Подписки на паузе пропускаются.
+    /// показывается немедленно, но РОВНО ОДИН раз за цикл: повтор гасится по
+    /// персистентному маркеру `lastNotifiedRenewal`. Подписки на паузе пропускаются.
     /// Если уведомления выключены в настройках — очищает и запланированные, и уже
     /// показанные. Вызывать при любом изменении данных.
     static func reschedule(for subscriptions: [Subscription]) async {
@@ -46,87 +35,68 @@ enum NotificationScheduler {
             return
         }
 
-        let calendar = Calendar.current
-        let snapshots = subscriptions.filter { !$0.isPaused }.map {
-            Snapshot(
-                id: stableID(for: $0.persistentModelID),
-                name: $0.name,
-                amount: $0.amount,
-                currencyCode: $0.currencyCode,
-                nextRenewal: $0.nextRenewal,
-                notifyDaysBefore: $0.notifyDaysBefore
-            )
+        // Бэкфилл идентичности для легаси-записей (созданных до появления `notificationID`).
+        // Сохраняем только если реально что-то проставили — в установившемся режиме saves нет.
+        var didMutate = false
+        for subscription in subscriptions where subscription.notificationID == nil {
+            subscription.notificationID = UUID().uuidString
+            didMutate = true
         }
+        if didMutate { try? AppModelContainer.shared.mainContext.save() }
 
-        // Подчищаем «осиротевшие» доставленные уведомления: старые копии с нестабильными
-        // id (см. `stableID`) и записи удалённых/паузнутых подписок. Доставленные активных
+        let calendar = Calendar.current
+        let active = subscriptions.filter { !$0.isPaused }
+
+        // Подчищаем «осиротевшие» доставленные уведомления: записи удалённых/паузнутых
+        // подписок и старые копии с нестабильными id из прошлых версий. Доставленные активных
         // подписок остаются — следующая доставка заменит их по стабильному id, а не размножит.
-        let validIDs = Set(snapshots.map(\.id))
+        let validIDs = Set(active.compactMap { $0.notificationID.map { "sub-\($0)" } })
         let delivered = await center.deliveredNotifications()
-        let deliveredIDs = Set(delivered.map(\.request.identifier))
-        let stale = deliveredIDs.filter { !validIDs.contains($0) }
+        let stale = Set(delivered.map(\.request.identifier)).filter { !validIDs.contains($0) }
         if !stale.isEmpty {
             center.removeDeliveredNotifications(withIdentifiers: Array(stale))
         }
 
-        for snapshot in snapshots {
+        for subscription in active {
+            guard let notificationID = subscription.notificationID else { continue }
+            let identifier = "sub-\(notificationID)"
+            let nextRenewal = subscription.nextRenewal
             guard let plannedFireDate = calendar.date(
                 byAdding: .day,
-                value: -snapshot.notifyDaysBefore,
-                to: snapshot.nextRenewal
+                value: -subscription.notifyDaysBefore,
+                to: nextRenewal
             ) else { continue }
 
-            // Плановая дата напоминания ещё впереди — используем её как есть.
-            //
-            // Если она уже прошла, но само продление ещё не наступило (подписку добавили
-            // внутри окна напоминания или продление совсем близко) — не теряем уведомление,
-            // а показываем его в ближайшую минуту. Но РОВНО ОДИН раз: reschedule работает
-            // по принципу reset-and-rebuild и вызывается часто (открытие меню, правка
-            // данных), поэтому без защиты он планировал бы новое «через минуту» уведомление
-            // при каждом проходе, плодя дубли. Признак «по этой подписке уже уведомили» —
-            // наличие доставленного уведомления с тем же id; тогда больше не планируем.
-            //
-            // Если продление уже позади — пропускаем (в норме недостижимо: nextRenewal
-            // всегда в будущем, см. RenewalDate.nextOccurrence).
-            let fireDate: Date
-            if plannedFireDate > .now {
-                fireDate = plannedFireDate
-            } else if snapshot.nextRenewal > .now {
-                if deliveredIDs.contains(snapshot.id) { continue }
-                fireDate = calendar.date(byAdding: .minute, value: 1, to: .now)
-                    ?? .now.addingTimeInterval(60)
-            } else {
-                continue
-            }
-
             let content = UNMutableNotificationContent()
-            content.title = "Upcoming renewal: \(snapshot.name)"
-            content.body = "\(snapshot.amount.formatted(.currency(code: snapshot.currencyCode))) renews \(snapshot.nextRenewal.formatted(date: .abbreviated, time: .omitted))."
+            content.title = "Upcoming renewal: \(subscription.name)"
+            content.body = "\(subscription.amount.formatted(.currency(code: subscription.currencyCode))) renews \(nextRenewal.formatted(date: .abbreviated, time: .omitted))."
             content.sound = .default
 
-            let components = calendar.dateComponents(
-                [.year, .month, .day, .hour, .minute],
-                from: fireDate
-            )
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-            let request = UNNotificationRequest(
-                identifier: snapshot.id,
-                content: content,
-                trigger: trigger
-            )
-            try? await center.add(request)
+            if plannedFireDate > .now {
+                // Плановая дата напоминания ещё впереди — обычное отложенное уведомление.
+                let components = calendar.dateComponents(
+                    [.year, .month, .day, .hour, .minute],
+                    from: plannedFireDate
+                )
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                try? await center.add(request)
+            } else if nextRenewal > .now {
+                // Плановая дата прошла, но продление ещё впереди (подписку добавили внутри окна
+                // напоминания или продление совсем близко) — не теряем уведомление, показываем
+                // его сразу. Но РОВНО ОДИН раз за цикл: reschedule работает по принципу
+                // reset-and-rebuild и вызывается часто, поэтому повтор гасим персистентным
+                // маркером. Маркер ставим ДО доставки (оптимистично) — это закрывает гонку
+                // двух одновременных пересчётов; немедленная доставка (trigger: nil) убирает
+                // 60-секундное pending-окно, в котором следующий reset отменил бы напоминание.
+                if subscription.lastNotifiedRenewal == nextRenewal { continue }
+                subscription.lastNotifiedRenewal = nextRenewal
+                try? AppModelContainer.shared.mainContext.save()
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+                try? await center.add(request)
+            }
+            // Иначе продление уже позади — пропускаем (в норме недостижимо: nextRenewal
+            // всегда в будущем, см. RenewalDate.nextOccurrence).
         }
-    }
-
-    /// Стабильный между запусками идентификатор уведомления подписки.
-    /// `persistentModelID.hashValue` использовать нельзя: `Hashable` в Swift солится
-    /// случайным seed'ом на каждый запуск процесса, поэтому идентификатор «плавал» —
-    /// доставленные уведомления не схлопывались по id, а копились в Центре. `PersistentIdentifier`
-    /// — `Codable`, и его кодированное представление сохранённой записи стабильно между запусками.
-    private static func stableID(for id: PersistentIdentifier) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        let token = (try? encoder.encode(id))?.base64EncodedString() ?? "unknown"
-        return "sub-\(token)"
     }
 }
