@@ -2,10 +2,14 @@ import SwiftUI
 import SwiftData
 import AppKit
 
-/// Запускает периодическую проверку обновлений при старте приложения.
+/// Запускает при старте приложения проверку обновлений и планировщик напоминаний.
+/// Планировщик стартует именно здесь, а не из вью меню: окно MenuBarExtra создаётся
+/// только при первом клике по иконке, и привязанные к нему проверки не выполнялись бы
+/// вовсе, пока пользователь не откроет меню.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         UpdateService.shared.startPeriodicChecks()
+        MainActor.assumeIsolated { NotificationScheduler.start() }
     }
 }
 

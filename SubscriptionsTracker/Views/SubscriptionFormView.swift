@@ -113,10 +113,9 @@ struct SubscriptionFormView: View {
         }
 
         try? modelContext.save()
-        // Форма — отдельное окно; меню (MenuBarExtra .window) при этом теряет фокус и
-        // MenuContentView может быть демонтирован, поэтому его `.onChange(schedulingFingerprint)`
-        // не сработает. Пересчитываем уведомления явно, как это делает импорт.
-        Task { await NotificationScheduler.rescheduleFromStore() }
+        // Явная проверка напоминаний сразу после сохранения, не дожидаясь
+        // минутного тика планировщика.
+        Task { await NotificationScheduler.checkNow() }
         dismiss()
     }
 }

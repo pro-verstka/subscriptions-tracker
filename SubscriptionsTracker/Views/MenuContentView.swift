@@ -47,29 +47,13 @@ struct MenuContentView: View {
         TotalsCalculator.monthlyTotals(for: activeSubscriptions)
     }
 
-    /// Отпечаток полей, влияющих на расписание уведомлений. Меняется при добавлении,
-    /// удалении или правке релевантных полей — это триггер для пересчёта уведомлений.
-    private var schedulingFingerprint: String {
-        subscriptions
-            .map { "\($0.notificationID ?? "nil"):\($0.renewalDate.timeIntervalSince1970):\($0.notifyDaysBefore):\($0.periodRaw):\($0.isPaused)" }
-            .joined(separator: "|")
-    }
-
     var body: some View {
         // Форма открывается отдельным окном (сцена `subscriptionForm`), а не инлайн:
         // окно menubar (стиль `.window`) закрывается при потере фокуса, что и происходит
         // при активации окна формы — это ожидаемо, как и при открытии Settings.
+        // Напоминаниями занимается NotificationScheduler (стартует в AppDelegate),
+        // этой вью для них ничего делать не нужно.
         list
-            .task {
-                if AppSettings.shared.notificationsEnabled {
-                    await NotificationScheduler.requestAuthorization()
-                }
-                await NotificationScheduler.reschedule(for: subscriptions)
-            }
-            .onChange(of: schedulingFingerprint) {
-                let current = subscriptions
-                Task { await NotificationScheduler.reschedule(for: current) }
-            }
     }
 
     private var list: some View {
@@ -297,15 +281,16 @@ struct MenuContentView: View {
     private func delete(_ subscription: Subscription) {
         modelContext.delete(subscription)
         try? modelContext.save()
-        // Явный пересчёт: чистка доставленных уведомлений удалённой подписки не должна
-        // зависеть от тайминга наблюдения `schedulingFingerprint` этой вью.
-        Task { await NotificationScheduler.rescheduleFromStore() }
+        // Явная проверка: доставленное уведомление удалённой подписки убираем сразу,
+        // не дожидаясь минутного тика планировщика.
+        Task { await NotificationScheduler.checkNow() }
     }
 
     /// Ставит подписку на паузу или возобновляет её.
     private func togglePause(_ subscription: Subscription) {
         subscription.isPaused.toggle()
         try? modelContext.save()
+        Task { await NotificationScheduler.checkNow() }
     }
 
     /// Переключает период отображения итогов по кругу: month → year → week → …

@@ -41,7 +41,7 @@ struct SettingsView: View {
                     .onChange(of: settings.notificationsEnabled) { _, isOn in
                         Task {
                             if isOn { await NotificationScheduler.requestAuthorization() }
-                            await NotificationScheduler.rescheduleFromStore()
+                            await NotificationScheduler.checkNow()
                         }
                     }
 
@@ -139,7 +139,7 @@ struct SettingsView: View {
             }
             Task {
                 if settings.notificationsEnabled { await NotificationScheduler.requestAuthorization() }
-                await NotificationScheduler.rescheduleFromStore()
+                await NotificationScheduler.checkNow()
             }
         } catch {
             show(error.localizedDescription, error: true)
