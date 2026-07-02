@@ -2,10 +2,9 @@ import SwiftUI
 import SwiftData
 import AppKit
 
-/// Запускает при старте приложения проверку обновлений и планировщик напоминаний.
-/// Планировщик стартует именно здесь, а не из вью меню: окно MenuBarExtra создаётся
-/// только при первом клике по иконке, и привязанные к нему проверки не выполнялись бы
-/// вовсе, пока пользователь не откроет меню.
+/// Starts update checks and the reminder scheduler. The scheduler must start here,
+/// not in the menu view: the MenuBarExtra content view doesn't exist until the
+/// icon is first clicked.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         UpdateService.shared.startPeriodicChecks()
@@ -27,7 +26,7 @@ struct SubscriptionsTrackerApp: App {
         Window("Subscription", id: "subscriptionForm") {
             SubscriptionFormScene()
         }
-        .modelContainer(AppModelContainer.shared) // форме нужен modelContext для insert/save
+        .modelContainer(AppModelContainer.shared) // the form needs a modelContext for insert/save
         .windowResizability(.contentSize)
         .defaultPosition(.center)
 

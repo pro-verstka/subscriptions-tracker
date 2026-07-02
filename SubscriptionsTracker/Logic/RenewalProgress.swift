@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// Прогресс текущего биллингового цикла подписки и цвет «срочности».
 enum RenewalProgress {
-    /// Доля пройденного цикла: 0 — только что продлили, 1 — наступает продление.
-    /// Цикл = от предыдущего продления до ближайшего будущего (по периоду подписки).
+    /// Fraction of the current billing cycle: 0 = just renewed, 1 = renewal due.
+    /// The cycle spans from the previous renewal to the nearest future one.
     static func fraction(
         for subscription: Subscription,
         now: Date = .now,
@@ -24,13 +23,12 @@ enum RenewalProgress {
         return min(max(elapsed / total, 0), 1)
     }
 
-    /// Цвет от зелёного (далеко) к красному (близко) — через жёлтый.
     static func color(forFraction fraction: Double) -> Color {
-        let hue = 0.33 * (1 - fraction) // 0.33 ≈ зелёный, 0.0 = красный
+        let hue = 0.33 * (1 - fraction) // hue 0.33 ≈ green, 0.0 = red
         return Color(hue: hue, saturation: 0.85, brightness: 0.9)
     }
 
-    /// Сколько целых дней осталось до ближайшего продления (не меньше 0).
+    /// Whole days until the nearest renewal (never negative).
     static func daysRemaining(
         for subscription: Subscription,
         now: Date = .now,

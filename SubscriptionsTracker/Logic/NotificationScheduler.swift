@@ -2,28 +2,22 @@ import Foundation
 import SwiftData
 import UserNotifications
 
-/// Локальные уведомления о приближающемся продлении подписки.
+/// Delivers renewal reminders.
 ///
-/// Дизайн: приложение НИКОГДА не взводит отложенные (pending) запросы с триггерами
-/// на будущее. usernoted в macOS 26 привязывает запросы не к bundle id, а к идентичности
-/// конкретного бинарника (`source`; для ad-hoc-подписи это cdhash, уникальный у каждой
-/// сборки). После каждого обновления (updater подменяет бандл) или запуска dev-сборки
-/// старые pending-запросы становятся «чужими»: новый бинарник не видит их через
-/// `getPending`/`removeAllPending` и не может заменить по identifier, но система
-/// продолжает их доставлять под тем же именем приложения. Так каждая сборка оставляла
-/// свой взведённый запрос на одну и ту же дату — и в момент срабатывания они падали
-/// пачкой одинаковых уведомлений. Никакой reset-and-rebuild это не лечит.
-///
-/// Поэтому напоминания доставляет минутный таймер постоянно работающего агента:
-/// «пора ли напомнить» проверяется по данным, доставка немедленная (`trigger: nil`),
-/// повтор гасится персистентным маркером `lastNotifiedRenewal` — ровно один раз за цикл.
+/// Never schedules future (pending) notification requests: on macOS 26 usernoted
+/// keys notification state by the binary's code-signing identity (for ad-hoc
+/// signing, the per-build cdhash), so requests armed by a previous build survive
+/// self-updates and dev-build runs as zombies — invisible to the new binary,
+/// undeletable, unreplaceable by identifier, yet still delivered by the system.
+/// Instead, a minute timer in this always-running agent posts due reminders
+/// immediately, deduplicated once per renewal cycle via the persisted
+/// `lastNotifiedRenewal` marker.
 @MainActor
 enum NotificationScheduler {
     private static var timer: Timer?
 
-    /// Запускается один раз при старте приложения (из `AppDelegate`). Подчищает
-    /// взведённые запросы своего source (наследие версий с календарными триггерами)
-    /// и заводит минутную проверку напоминаний.
+    /// Called once at launch: drains pending requests armed by older app versions
+    /// (only this binary's own are visible) and starts the minute check.
     static func start() {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         guard timer == nil else { return }
@@ -41,16 +35,13 @@ enum NotificationScheduler {
         }
     }
 
-    /// Запрашивает разрешение на показ уведомлений (при старте и включении тумблера).
     static func requestAuthorization() async {
         let center = UNUserNotificationCenter.current()
         _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
     }
 
-    /// Однократная проверка: показывает напоминания, чей момент наступил, и подчищает
-    /// доставленные уведомления неактуальных подписок. Вызывается таймером раз в минуту
-    /// и явно после любого изменения данных (форма, удаление, импорт, настройки) —
-    /// чтобы реакция была мгновенной, а не в пределах минуты.
+    /// Runs on every timer tick and explicitly after any data mutation
+    /// (form save, delete, pause, import, settings toggle) for instant reaction.
     static func checkNow() async {
         let context = AppModelContainer.shared.mainContext
         let subscriptions = (try? context.fetch(FetchDescriptor<Subscription>())) ?? []
@@ -61,13 +52,11 @@ enum NotificationScheduler {
         let center = UNUserNotificationCenter.current()
 
         guard AppSettings.shared.notificationsEnabled else {
-            // Уведомления выключены — убираем уже показанные напоминания.
             center.removeAllDeliveredNotifications()
             return
         }
 
-        // Бэкфилл идентичности для легаси-записей (созданных до появления `notificationID`).
-        // Сохраняем только если реально что-то проставили — в установившемся режиме saves нет.
+        // Backfill identity for records created before `notificationID` existed.
         var didMutate = false
         for subscription in subscriptions where subscription.notificationID == nil {
             subscription.notificationID = UUID().uuidString
@@ -78,9 +67,9 @@ enum NotificationScheduler {
         let calendar = Calendar.current
         let active = subscriptions.filter { !$0.isPaused }
 
-        // Подчищаем «осиротевшие» доставленные уведомления: записи удалённых/паузнутых
-        // подписок и старые копии с нестабильными id из прошлых версий. Убрать получится
-        // только доставленные этим же бинарником — чужие source нам не видны.
+        // Remove delivered notifications of deleted/paused subscriptions and stale
+        // ids from old versions. Only notifications delivered by this binary's
+        // source are visible here; foreign ones can't be touched.
         let validIDs = Set(active.compactMap { $0.notificationID.map { "sub-\($0)" } })
         let delivered = await center.deliveredNotifications()
         let stale = Set(delivered.map(\.request.identifier)).filter { !validIDs.contains($0) }
@@ -97,15 +86,12 @@ enum NotificationScheduler {
                 to: nextRenewal
             ) else { continue }
 
-            // Момент напоминания ещё впереди — ничего не взводим, следующий тик проверит.
-            // Продление позади — пропускаем (в норме недостижимо: nextRenewal всегда
-            // в будущем, см. RenewalDate.nextOccurrence).
             guard reminderDate <= .now, nextRenewal > .now else { continue }
 
-            // РОВНО ОДИН раз за цикл продления. Маркер ставим ДО доставки (оптимистично)
-            // и синхронно между точками прерывания — это закрывает гонку двух
-            // одновременных проверок. В следующем цикле nextRenewal уходит вперёд,
-            // перестаёт совпадать с маркером, и напоминание перевзводится само.
+            // Exactly once per renewal cycle. The marker is set before delivery,
+            // synchronously between suspension points, closing the race of two
+            // concurrent checks. Next cycle `nextRenewal` moves forward, stops
+            // matching the marker, and the reminder re-arms itself.
             if subscription.lastNotifiedRenewal == nextRenewal { continue }
             subscription.lastNotifiedRenewal = nextRenewal
             try? AppModelContainer.shared.mainContext.save()

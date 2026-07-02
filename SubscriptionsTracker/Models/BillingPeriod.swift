@@ -1,6 +1,5 @@
 import Foundation
 
-/// Биллинговый цикл подписки.
 enum BillingPeriod: String, Codable, CaseIterable, Identifiable {
     case weekly
     case monthly
@@ -8,7 +7,6 @@ enum BillingPeriod: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Человекочитаемое название для UI.
     var title: String {
         switch self {
         case .weekly:  return "Weekly"
@@ -17,7 +15,6 @@ enum BillingPeriod: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Короткий суффикс для итоговых сумм: «/wk», «/mo», «/yr».
     var totalSuffix: String {
         switch self {
         case .weekly:  return "/wk"
@@ -26,8 +23,8 @@ enum BillingPeriod: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Множитель, приводящий одну оплату этого периода к сумме «в месяц».
-    /// weekly: 52 недели / 12 месяцев; monthly: 1; yearly: 1 / 12.
+    /// Converts one payment of this period to a monthly amount:
+    /// weekly = 52/12, yearly = 1/12.
     var monthlyFactor: Decimal {
         switch self {
         case .weekly:  return Decimal(52) / Decimal(12)
@@ -36,7 +33,7 @@ enum BillingPeriod: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Календарный шаг для перемотки даты продления вперёд.
+    /// Calendar step for rolling a renewal date forward.
     var calendarStep: (component: Calendar.Component, value: Int) {
         switch self {
         case .weekly:  return (.day, 7)

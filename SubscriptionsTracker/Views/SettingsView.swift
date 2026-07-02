@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// Окно настроек: автозапуск, уведомления, импорт/экспорт, «О программе».
 struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updater = UpdateService.shared

@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Передаёт окну формы текущую цель: подписку для редактирования или `nil` для добавления.
-/// `token` меняется при каждом открытии, чтобы пересоздавать `@State` формы
-/// (через `.id(token)`) — иначе при повторном открытии остались бы старые значения.
+/// Hands the form window its target: a subscription to edit, or `nil` to add.
+/// `token` changes on every open so the form's `@State` is recreated via `.id(token)`.
 @MainActor
 final class SubscriptionFormPresenter: ObservableObject {
     static let shared = SubscriptionFormPresenter()

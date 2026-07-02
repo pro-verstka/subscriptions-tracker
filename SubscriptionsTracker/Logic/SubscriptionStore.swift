@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 
-/// Переносимое представление подписки для экспорта/импорта в JSON.
 struct SubscriptionDTO: Codable {
     var name: String
     var amount: Decimal
@@ -9,27 +8,24 @@ struct SubscriptionDTO: Codable {
     var period: String
     var renewalDate: Date
     var notifyDaysBefore: Int
-    /// Optional — для совместимости со старыми файлами экспорта без этого поля.
+    /// Optional for compatibility with old export files.
     var isPaused: Bool?
 }
 
-/// Результат импорта.
 struct ImportResult {
     let added: Int
     let skipped: Int
 }
 
-/// Корневой документ экспорта: подписки + настройки приложения.
 struct ExportDocument: Codable {
     var subscriptions: [SubscriptionDTO]
     var settings: SettingsDTO
 }
 
-/// Экспорт/импорт подписок в JSON через общий контекст SwiftData.
+/// JSON export/import of subscriptions and settings.
 @MainActor
 enum SubscriptionStore {
-    /// Ключ идентичности подписки — по всем полям. Идентичные записи при импорте
-    /// не дублируются.
+    /// Identity is all fields — identical records are not duplicated on import.
     private static func identityKey(
         name: String, amount: Decimal, currencyCode: String,
         period: String, renewalDate: Date, notifyDaysBefore: Int
@@ -59,8 +55,6 @@ enum SubscriptionStore {
         return try encoder.encode(document)
     }
 
-    /// Декодирует JSON, добавляет подписки в хранилище (пропуская идентичные по всем
-    /// полям) и применяет настройки из файла. Возвращает число добавленных и пропущенных.
     @discardableResult
     static func importJSON(_ data: Data) throws -> ImportResult {
         let decoder = JSONDecoder()
@@ -84,7 +78,7 @@ enum SubscriptionStore {
                 name: dto.name, amount: dto.amount, currencyCode: dto.currencyCode,
                 period: dto.period, renewalDate: dto.renewalDate, notifyDaysBefore: dto.notifyDaysBefore
             )
-            // пропускаем как уже существующие, так и дубли внутри самого файла
+            // skips both existing records and duplicates within the file itself
             guard seen.insert(key).inserted else { skipped += 1; continue }
 
             context.insert(Subscription(

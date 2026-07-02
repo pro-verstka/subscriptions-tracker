@@ -1,12 +1,9 @@
 import Foundation
 
-/// Вычисление даты продления.
 enum RenewalDate {
-    /// Возвращает ближайшее вхождение даты продления на момент `now` или позже,
-    /// перематывая исходную дату вперёд с шагом биллингового периода.
-    ///
-    /// Используется `Calendar.date(byAdding:)`, поэтому арифметика месяцев и лет
-    /// корректно учитывает реальную длину периодов (например, 31 января + 1 месяц).
+    /// Nearest occurrence of the renewal date at or after `now`, rolling the stored
+    /// date forward in billing-period steps. Uses `Calendar.date(byAdding:)`, so
+    /// month/year arithmetic respects real period lengths (e.g. Jan 31 + 1 month).
     static func nextOccurrence(
         of stored: Date,
         period: BillingPeriod,

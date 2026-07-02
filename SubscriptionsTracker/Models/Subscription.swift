@@ -1,35 +1,27 @@
 import Foundation
 import SwiftData
 
-/// Одна отслеживаемая подписка.
-///
-/// `period` хранится как raw-строка (`periodRaw`) для стабильности схемы SwiftData;
-/// доступ к типизированному значению — через computed-свойство `period`.
 @Model
 final class Subscription {
     var name: String
     var amount: Decimal
     var currencyCode: String
+    /// Stored as a raw string for SwiftData schema stability; typed access via `period`.
     var periodRaw: String
     var renewalDate: Date
     var notifyDaysBefore: Int
-    /// Подписка «на паузе»: скрыта из списка (если не включён показ всех),
-    /// не входит в итоги и не получает уведомлений. Default в объявлении —
-    /// для лёгкой миграции существующих хранилищ SwiftData.
+    /// Paused: hidden from the list (unless "Show all subscriptions" is on), excluded
+    /// from totals and reminders. Default in the declaration eases store migration.
     var isPaused: Bool = false
 
-    /// Стабильный, не зависящий от содержимого идентификатор уведомлений подписки.
-    /// Не выводим его из `persistentModelID`: тот не является стабильным внешним ключом
-    /// (меняется при переходе temporary→permanent и между выборками/запусками), из-за чего
-    /// уведомления не схлопывались по id, а копились. Опционально — ради лёгкой миграции
-    /// существующих хранилищ; nil-записи бэкфилятся один раз в `NotificationScheduler`.
-    /// Без `@Attribute(.unique)`: уникальность гарантирует выдача свежего `UUID()`.
+    /// Stable notification identifier. Not derived from `persistentModelID`: that is
+    /// not a stable external key (it changes across temporary→permanent and between
+    /// fetches), which made delivered notifications pile up instead of collapsing.
+    /// Optional for store migration; nil records are backfilled by `NotificationScheduler`.
     var notificationID: String?
 
-    /// Цикл продления (`nextRenewal`), для которого напоминание уже показано.
-    /// Гасит повторную доставку при ежеминутных проверках планировщика и переживает
-    /// перезапуск; автоматически перевзводится в следующем цикле — `nextRenewal`
-    /// уходит вперёд и перестаёт совпадать с сохранённым значением.
+    /// Renewal cycle (`nextRenewal`) a reminder was already shown for. Survives
+    /// restarts; stops matching once `nextRenewal` moves on, re-arming the reminder.
     var lastNotifiedRenewal: Date?
 
     var period: BillingPeriod {
@@ -54,10 +46,9 @@ final class Subscription {
         self.notifyDaysBefore = notifyDaysBefore
         self.isPaused = isPaused
         self.notificationID = UUID().uuidString
-        // lastNotifiedRenewal остаётся nil — по этой подписке ещё не уведомляли.
     }
 
-    /// Ближайшая будущая дата продления, вычисленная от сохранённой даты.
+    /// Nearest future renewal date, computed from the stored date.
     var nextRenewal: Date {
         RenewalDate.nextOccurrence(of: renewalDate, period: period)
     }

@@ -1,28 +1,24 @@
 import Foundation
 
-/// Итог «в месяц» по одной валюте. Хранится в месячном выражении; пересчёт
-/// на другой период делается на лету в `amount(per:)`/`formatted(per:)`.
+/// Per-currency total, stored as a monthly amount; other periods derived on the fly.
 struct CurrencyTotal: Identifiable {
     let currencyCode: String
     let monthlyAmount: Decimal
     var id: String { currencyCode }
 
-    /// Сумма, пересчитанная с «в месяц» на указанный период.
     func amount(per period: BillingPeriod) -> Decimal {
         monthlyAmount / period.monthlyFactor
     }
 
-    /// Строка вида «25,00 $/mo» для указанного периода, по правилам валюты.
     func formatted(per period: BillingPeriod) -> String {
         let value = amount(per: period).formatted(.currency(code: currencyCode))
         return "\(value)\(period.totalSuffix)"
     }
 }
 
-/// Подсчёт общих сумм подписок.
 enum TotalsCalculator {
-    /// Нормализует сумму каждой подписки к «в месяц» (умножение на `period.monthlyFactor`)
-    /// и группирует по коду валюты. Арифметика — только в `Decimal`.
+    /// Normalizes each subscription to a monthly amount and groups by currency
+    /// code. `Decimal` arithmetic only.
     static func monthlyTotals(for subscriptions: [Subscription]) -> [CurrencyTotal] {
         var sums: [String: Decimal] = [:]
         for subscription in subscriptions {

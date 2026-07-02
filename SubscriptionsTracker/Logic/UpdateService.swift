@@ -16,11 +16,9 @@ enum UpdateState {
     case failed(String)
 }
 
-/// Проверка и установка обновлений из GitHub Releases.
-///
-/// Скачивает `SubscriptionsTracker-macos.zip` из последнего релиза, заменяет текущий
-/// `.app` и перезапускается. Требует, чтобы приложение НЕ было в App Sandbox (см.
-/// `SubscriptionsTracker.entitlements`), иначе сеть и самозамена бандла недоступны.
+/// Self-update from GitHub Releases: downloads `SubscriptionsTracker-macos.zip`
+/// from the latest release, replaces this .app bundle in place and relaunches.
+/// Requires the app to NOT be sandboxed (see `SubscriptionsTracker.entitlements`).
 final class UpdateService: ObservableObject {
     static let shared = UpdateService()
 
@@ -196,7 +194,7 @@ final class UpdateService: ObservableObject {
         }
 
         downloadObservation = task.progress.observe(\.fractionCompleted) { progress, _ in
-            // Прогресс отслеживается; состояние остаётся .downloading
+            // progress is observed but not surfaced in the UI yet
             _ = progress.fractionCompleted
         }
 
@@ -214,7 +212,6 @@ final class UpdateService: ObservableObject {
             return
         }
 
-        // Unzip
         let ditto = Process()
         ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         ditto.arguments = ["-xk", zipURL.path, tempDir.path]
@@ -232,21 +229,20 @@ final class UpdateService: ObservableObject {
             return
         }
 
-        // Find .app in extracted contents
         guard let extractedApp = try? fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil)
             .first(where: { $0.pathExtension == "app" }) else {
             state = .failed("No .app found in update archive")
             return
         }
 
-        // Remove quarantine
         let xattr = Process()
         xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
         xattr.arguments = ["-rd", "com.apple.quarantine", extractedApp.path]
         try? xattr.run()
         xattr.waitUntilExit()
 
-        // Self-replace via helper script
+        // The helper script waits for this process to exit, swaps the bundle
+        // in place and relaunches it.
         let currentAppPath = Bundle.main.bundlePath
         let pid = ProcessInfo.processInfo.processIdentifier
 

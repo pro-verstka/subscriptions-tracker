@@ -1,6 +1,5 @@
 import Foundation
 
-/// Порядок сортировки списка подписок (внутри каждой валютной группы).
 enum SubscriptionSort: String, CaseIterable, Identifiable {
     case renewalDate
     case name

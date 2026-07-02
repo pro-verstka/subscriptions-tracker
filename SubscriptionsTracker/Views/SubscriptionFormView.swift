@@ -1,14 +1,12 @@
 import SwiftUI
 import SwiftData
 
-/// Форма добавления/редактирования подписки. `subscription == nil` — режим добавления.
-/// Показывается в отдельном окне (`Window` сцены), поэтому закрытие выполняется через
-/// `@Environment(\.dismiss)`. Цель формы окну передаёт `SubscriptionFormPresenter`.
+/// Add/edit form; `subscription == nil` means add mode. Shown in its own window
+/// scene, so it closes via `@Environment(\.dismiss)`.
 struct SubscriptionFormView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    /// Пока поддерживаем только эти валюты (код + символ).
     static let supportedCurrencies: [(code: String, symbol: String)] = [
         ("USD", "$"),
         ("EUR", "€"),
@@ -113,15 +111,13 @@ struct SubscriptionFormView: View {
         }
 
         try? modelContext.save()
-        // Явная проверка напоминаний сразу после сохранения, не дожидаясь
-        // минутного тика планировщика.
+        // Check reminders immediately instead of waiting for the scheduler tick.
         Task { await NotificationScheduler.checkNow() }
         dismiss()
     }
 }
 
-/// Содержимое окна формы: берёт цель у `SubscriptionFormPresenter` и пересоздаёт
-/// форму по `token`, чтобы каждое открытие начиналось с актуальными значениями.
+/// Recreates the form via `.id(token)` on every open so its `@State` starts fresh.
 struct SubscriptionFormScene: View {
     @ObservedObject private var presenter = SubscriptionFormPresenter.shared
 

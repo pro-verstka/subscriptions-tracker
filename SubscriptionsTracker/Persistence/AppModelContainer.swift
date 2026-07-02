@@ -1,9 +1,8 @@
 import Foundation
 import SwiftData
 
-/// Единый `ModelContainer` приложения. Один контейнер на процесс — повторное создание
-/// против того же URL стора бросает ошибку, поэтому используем общий статический экземпляр
-/// и для SwiftUI-сцены, и для планировщика уведомлений.
+/// The app's single `ModelContainer`. Creating a second container against the same
+/// store URL throws, so the SwiftUI scene and non-UI code share this one instance.
 enum AppModelContainer {
     static let shared: ModelContainer = {
         let schema = Schema([Subscription.self])

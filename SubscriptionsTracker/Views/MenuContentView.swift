@@ -2,8 +2,6 @@ import SwiftUI
 import SwiftData
 import AppKit
 
-/// Содержимое выпадающего окна в menubar: итоги по валютам, список подписок,
-/// кнопки добавления и выхода.
 struct MenuContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
@@ -11,25 +9,22 @@ struct MenuContentView: View {
     @ObservedObject private var updater = UpdateService.shared
     @Query private var subscriptions: [Subscription]
 
-    /// Подписки, сгруппированные по валюте, с месячным итогом группы.
     private struct CurrencyGroup: Identifiable {
         let total: CurrencyTotal
         let subscriptions: [Subscription]
         var id: String { total.currencyCode }
     }
 
-    /// Активные подписки — участвуют в итогах и уведомлениях.
     private var activeSubscriptions: [Subscription] {
         subscriptions.filter { !$0.isPaused }
     }
 
-    /// Подписки, отображаемые в списке (с учётом «Show all subscriptions»).
     private var displayedSubscriptions: [Subscription] {
         settings.showAllSubscriptions ? subscriptions : activeSubscriptions
     }
 
-    /// Группы строятся по валютам отображаемых подписок, а суммы — только по активным:
-    /// валютная группа, где всё на паузе, остаётся видимой с нулевым итогом.
+    /// Groups follow displayed subscriptions, totals count only active ones —
+    /// an all-paused currency group stays visible with a zero total.
     private var groups: [CurrencyGroup] {
         let sort = settings.sortOrder
         let activeTotals = Dictionary(
@@ -48,11 +43,8 @@ struct MenuContentView: View {
     }
 
     var body: some View {
-        // Форма открывается отдельным окном (сцена `subscriptionForm`), а не инлайн:
-        // окно menubar (стиль `.window`) закрывается при потере фокуса, что и происходит
-        // при активации окна формы — это ожидаемо, как и при открытии Settings.
-        // Напоминаниями занимается NotificationScheduler (стартует в AppDelegate),
-        // этой вью для них ничего делать не нужно.
+        // The add/edit form opens in its own window scene: the menu-bar window
+        // (`.window` style) closes on focus loss anyway, same as with Settings.
         list
     }
 
@@ -132,7 +124,7 @@ struct MenuContentView: View {
         .padding(.vertical, 8)
     }
 
-    // MARK: - Header (итоги по валютам — колонками)
+    // MARK: - Header (per-currency totals)
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -170,7 +162,7 @@ struct MenuContentView: View {
         .help("Click to switch period (week / month / year)")
     }
 
-    // MARK: - Content (список, сгруппированный по валюте)
+    // MARK: - Content (list grouped by currency)
 
     private func groupHeader(_ group: CurrencyGroup) -> some View {
         HStack {
@@ -191,14 +183,12 @@ struct MenuContentView: View {
 
     @ViewBuilder
     private var content: some View {
-        // У ScrollView нет собственной высоты, а окно MenuBarExtra подгоняется под
-        // контент, поэтому область списка имеет фиксированную высоту: строк меньше —
-        // снизу пустое место, больше — прокрутка. Динамическое измерение убрано:
-        // окно схлопывалось при первом запуске и не ужималось при удалении строк.
+        // The MenuBarExtra window auto-sizes to content and ScrollView has no
+        // intrinsic height, so the list area is fixed-height: fewer rows leave
+        // blank space, more rows scroll. Dynamic measurement collapsed the window.
         Group {
             if displayedSubscriptions.isEmpty {
                 VStack(spacing: 6) {
-                    // Различаем «подписок нет вовсе» и «все на паузе и скрыты».
                     Image(systemName: subscriptions.isEmpty ? "tray" : "pause.circle")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
@@ -208,8 +198,8 @@ struct MenuContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    // `TimelineView` каждую минуту прогоняет актуальный `now` в строки,
-                    // чтобы прогресс и дата продления не застывали (см. SubscriptionRow).
+                    // Feeds a fresh `now` into rows every minute so progress and
+                    // renewal dates don't freeze (see SubscriptionRow).
                     TimelineView(.everyMinute) { context in
                         LazyVStack(spacing: 0) {
                             if settings.groupByCurrency {
@@ -246,11 +236,9 @@ struct MenuContentView: View {
             }
     }
 
-    /// Фиксированная высота области списка: если строк больше — прокрутка,
-    /// если меньше — пустое место снизу.
     private let listHeight: CGFloat = 420
 
-    // MARK: - Footer (кнопки)
+    // MARK: - Footer
 
     private var footer: some View {
         HStack(spacing: 8) {
@@ -281,19 +269,17 @@ struct MenuContentView: View {
     private func delete(_ subscription: Subscription) {
         modelContext.delete(subscription)
         try? modelContext.save()
-        // Явная проверка: доставленное уведомление удалённой подписки убираем сразу,
-        // не дожидаясь минутного тика планировщика.
+        // Immediate check so the delivered notification of the deleted
+        // subscription is removed right away, not on the next minute tick.
         Task { await NotificationScheduler.checkNow() }
     }
 
-    /// Ставит подписку на паузу или возобновляет её.
     private func togglePause(_ subscription: Subscription) {
         subscription.isPaused.toggle()
         try? modelContext.save()
         Task { await NotificationScheduler.checkNow() }
     }
 
-    /// Переключает период отображения итогов по кругу: month → year → week → …
     private func cycleTotalsPeriod() {
         let all = BillingPeriod.allCases
         let index = all.firstIndex(of: settings.totalsPeriod) ?? 0
@@ -302,13 +288,12 @@ struct MenuContentView: View {
 
     private func openSettings() {
         openWindow(id: "settings")
-        NSApp.activate() // вынести окно настроек на передний план у agent-приложения
+        NSApp.activate() // agent app: bring the window to front
     }
 
-    /// Открывает окно формы: `nil` — добавление, иначе редактирование подписки.
     private func presentForm(_ subscription: Subscription?) {
         SubscriptionFormPresenter.shared.present(subscription)
         openWindow(id: "subscriptionForm")
-        NSApp.activate() // вынести окно формы на передний план у agent-приложения
+        NSApp.activate() // agent app: bring the window to front
     }
 }

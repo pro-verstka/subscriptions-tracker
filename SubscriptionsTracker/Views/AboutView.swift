@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// Окно «О программе».
 struct AboutView: View {
     private let repositoryURL = URL(string: "https://github.com/pro-verstka/subscriptions-tracker")!
 

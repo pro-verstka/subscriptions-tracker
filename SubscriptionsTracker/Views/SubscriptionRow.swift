@@ -1,10 +1,8 @@
 import SwiftUI
 
-/// Строка списка: название и сумма, цветной прогресс-бар цикла и «сколько осталось».
 struct SubscriptionRow: View {
     let subscription: Subscription
-    /// Текущий момент, прокинутый из `TimelineView` — чтобы прогресс, «осталось дней» и
-    /// дата продления пересчитывались по ходу времени, а не застывали с момента отрисовки.
+    /// Fed from `TimelineView` so progress, days left and dates keep updating over time.
     let now: Date
 
     private var amountText: String {
@@ -19,13 +17,11 @@ struct SubscriptionRow: View {
         subscription.isPaused ? .gray : RenewalProgress.color(forFraction: fraction)
     }
 
-    /// Ближайшая будущая дата продления на момент `now`.
     private var nextRenewal: Date {
         RenewalDate.nextOccurrence(of: subscription.renewalDate, period: subscription.period, now: now)
     }
 
     private var renewalCaption: String {
-        // Для подписки на паузе дата продления не имеет смысла.
         if subscription.isPaused { return "Paused" }
         let days = RenewalProgress.daysRemaining(for: subscription, now: now)
         let date = nextRenewal.formatted(date: .abbreviated, time: .omitted)
@@ -61,8 +57,7 @@ struct SubscriptionRow: View {
                     .foregroundStyle(.secondary)
             }
 
-            // У паузнутой подписки прогресс пустой, но бар остаётся —
-            // чтобы высота строк была одинаковой.
+            // Paused rows keep the (empty) bar so row heights stay equal.
             ProgressView(value: subscription.isPaused ? 0 : fraction)
                 .tint(accent)
         }
@@ -71,7 +66,6 @@ struct SubscriptionRow: View {
         .padding(.bottom, 4)
         .opacity(subscription.isPaused ? 0.55 : 1)
         .overlay(alignment: .leading) {
-            // Левая полоска-маркер подписки на паузе.
             if subscription.isPaused {
                 Capsule()
                     .fill(.tertiary)

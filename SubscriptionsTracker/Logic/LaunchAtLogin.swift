@@ -1,7 +1,6 @@
 import Foundation
 import ServiceManagement
 
-/// Управление автозапуском приложения при входе в систему через `SMAppService`.
 enum LaunchAtLogin {
     static var isEnabled: Bool {
         SMAppService.mainApp.status == .enabled

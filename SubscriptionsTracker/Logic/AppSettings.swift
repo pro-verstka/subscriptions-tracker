@@ -1,8 +1,7 @@
 import Foundation
 import Combine
 
-/// Переносимое представление настроек приложения для экспорта/импорта.
-/// `sortOrder` и `totalsPeriod` хранятся как rawValue соответствующих enum.
+/// Portable settings representation for export/import; enums as rawValue.
 struct SettingsDTO: Codable {
     var notificationsEnabled: Bool
     var sortOrder: String
@@ -12,7 +11,6 @@ struct SettingsDTO: Codable {
     var updateAutoCheckEnabled: Bool
 }
 
-/// Настройки приложения. Хранятся локально в `UserDefaults`.
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
@@ -32,13 +30,12 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(showAllSubscriptions, forKey: Keys.showAllSubscriptions) }
     }
 
-    /// Период, в котором показываются итоговые суммы в шапке (клик по сумме переключает).
     @Published var totalsPeriod: BillingPeriod {
         didSet { defaults.set(totalsPeriod.rawValue, forKey: Keys.totalsPeriod) }
     }
 
-    /// Снимок настроек для экспорта. `updateAutoCheckEnabled` живёт вне `AppSettings`
-    /// (его читают `UpdateService`/`SettingsView`), но хранится в том же `UserDefaults`.
+    /// `updateAutoCheckEnabled` lives outside `AppSettings` (read directly by
+    /// `UpdateService`/`SettingsView`) but is stored in the same `UserDefaults`.
     var exportSnapshot: SettingsDTO {
         SettingsDTO(
             notificationsEnabled: notificationsEnabled,
@@ -50,7 +47,7 @@ final class AppSettings: ObservableObject {
         )
     }
 
-    /// Применяет импортированные настройки. Невалидные rawValue enum'ов оставляют текущее значение.
+    /// Invalid enum rawValues keep the current value.
     func apply(_ dto: SettingsDTO) {
         notificationsEnabled = dto.notificationsEnabled
         sortOrder = SubscriptionSort(rawValue: dto.sortOrder) ?? sortOrder

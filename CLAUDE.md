@@ -41,5 +41,5 @@ Three process-wide singletons wire everything together:
 
 ## Conventions
 
-- Doc comments and inline comments are written in **Russian**; UI strings, identifiers, and log/error messages are in English. Follow this in new code.
+- All comments are in **English** and kept to the essential minimum: only constraints and rationale the code can't express (quirks, invariants, "don't do X because Y"). No narration of what the next line does. UI strings, identifiers, and log/error messages are in English too.
 - No external dependencies — keep it that way (it's an advertised feature).
